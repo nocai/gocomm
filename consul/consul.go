@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/kit/sd/consul"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/api/watch"
-	"github.com/nocai/infra"
+	"github.com/nocai/gocomm"
 	"os"
 	"time"
 )
