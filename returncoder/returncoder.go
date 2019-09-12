@@ -3,6 +3,7 @@ package returncoder
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/go-kit/kit/sd/lb"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -128,6 +129,8 @@ func F(i interface{}) ReturnCoder {
 	switch i.(type) {
 	case ReturnCoder:
 		return i.(ReturnCoder)
+	case lb.RetryError:
+		return F(i.(lb.RetryError).Final)
 	case error:
 		return Of(ErrInternalServer.Code(), i.(error).Error())
 	default:
