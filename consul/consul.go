@@ -28,9 +28,15 @@ func Register(l log.Logger, addr string, httpPort, grpcPort int, serviceName str
 
 	// 服务注册
 	consulClient = consul.NewClient(consulApi)
+	check := &api.AgentServiceCheck{
+		DeregisterCriticalServiceAfter: (5 * time.Second).String(),
+		HTTP:                           fmt.Sprintf("http://%s:%d/echo?Req=%v", gocomm.LocalIP(), httpPort, serviceName),
+		Timeout:                        "5s",
+		Interval:                       "5s",
+	}
 	if httpPort > 0 {
 		// http register
-		httpRegister = registration(httpPort, serviceName)
+		httpRegister = registration(httpPort, serviceName, check)
 		if err := consulClient.Register(httpRegister); err != nil {
 			_ = level.Error(l).Log("msg", err)
 			os.Exit(1)
@@ -38,7 +44,7 @@ func Register(l log.Logger, addr string, httpPort, grpcPort int, serviceName str
 	}
 	if grpcPort > 0 {
 		// grpc register
-		grpcRegister = registration(grpcPort, serviceName+"-grpc")
+		grpcRegister = registration(grpcPort, serviceName+"-grpc", check)
 		if err := consulClient.Register(grpcRegister); err != nil {
 			_ = level.Error(l).Log("msg", err)
 			os.Exit(1)
@@ -54,7 +60,7 @@ func Register(l log.Logger, addr string, httpPort, grpcPort int, serviceName str
 	return httpRegister, grpcRegister, consulClient
 }
 
-func registration(port int, serverName string) *api.AgentServiceRegistration {
+func registration(port int, serverName string, check *api.AgentServiceCheck) *api.AgentServiceRegistration {
 	localIP := gocomm.LocalIP()
 	return &api.AgentServiceRegistration{
 		ID:      fmt.Sprintf("%v:%v:%d", serverName, localIP, port),
@@ -62,12 +68,7 @@ func registration(port int, serverName string) *api.AgentServiceRegistration {
 		Address: localIP,
 		Port:    port,
 		Tags:    []string{serverName, "urlprefix-/" + serverName + " strip=/" + serverName},
-		Check: &api.AgentServiceCheck{
-			DeregisterCriticalServiceAfter: (5 * time.Second).String(),
-			HTTP:                           fmt.Sprintf("http://%s:%d/echo?Req=%v", localIP, port, serverName),
-			Timeout:                        "5s",
-			Interval:                       "5s",
-		},
+		Check:   check,
 	}
 }
 
