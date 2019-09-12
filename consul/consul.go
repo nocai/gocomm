@@ -12,32 +12,23 @@ import (
 	"time"
 )
 
-func Register(l log.Logger, addr string, httpPort, grpcPort int, serviceName string) (httpRegister, grpcRegister *api.AgentServiceRegistration, consulClient consul.Client) {
-	consulConfig := api.DefaultConfig()
-	if len(addr) > 0 {
-		consulConfig.Address = addr
-	}
-	consulApi, err := api.NewClient(consulConfig)
-	if err != nil {
-		_ = level.Error(l).Log("msg", err)
-		os.Exit(1)
-	}
-
+func Register(l log.Logger, consulClient *api.Client, addr string, httpPort, grpcPort int, serviceName string) (httpRegister, grpcRegister *api.AgentServiceRegistration) {
 	// KV
-	kv(l, consulApi, addr, serviceName)
+	kv(l, consulClient, addr, serviceName)
 
 	// 服务注册
-	consulClient = consul.NewClient(consulApi)
 	check := &api.AgentServiceCheck{
 		DeregisterCriticalServiceAfter: (5 * time.Second).String(),
 		HTTP:                           fmt.Sprintf("http://%s:%d/echo?Req=%v", gocomm.LocalIP(), httpPort, serviceName),
 		Timeout:                        "5s",
 		Interval:                       "5s",
 	}
+
+	client := consul.NewClient(consulClient)
 	if httpPort > 0 {
 		// http register
 		httpRegister = registration(httpPort, serviceName, check)
-		if err := consulClient.Register(httpRegister); err != nil {
+		if err := client.Register(httpRegister); err != nil {
 			_ = level.Error(l).Log("msg", err)
 			os.Exit(1)
 		}
@@ -45,7 +36,7 @@ func Register(l log.Logger, addr string, httpPort, grpcPort int, serviceName str
 	if grpcPort > 0 {
 		// grpc register
 		grpcRegister = registration(grpcPort, serviceName+"-grpc", check)
-		if err := consulClient.Register(grpcRegister); err != nil {
+		if err := client.Register(grpcRegister); err != nil {
 			_ = level.Error(l).Log("msg", err)
 			os.Exit(1)
 		}
@@ -57,7 +48,20 @@ func Register(l log.Logger, addr string, httpPort, grpcPort int, serviceName str
 	//	}
 	//}()
 
-	return httpRegister, grpcRegister, consulClient
+	return httpRegister, grpcRegister
+}
+
+func ConsulClient(l log.Logger, addr string) *api.Client {
+	consulConfig := api.DefaultConfig()
+	if len(addr) > 0 {
+		consulConfig.Address = addr
+	}
+	consulApi, err := api.NewClient(consulConfig)
+	if err != nil {
+		_ = level.Error(l).Log("msg", err)
+		os.Exit(1)
+	}
+	return consulApi
 }
 
 func registration(port int, serverName string, check *api.AgentServiceCheck) *api.AgentServiceRegistration {
