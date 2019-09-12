@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func Register(l log.Logger, addr string, port int, serviceName string) (*api.AgentServiceRegistration, consul.Client) {
+func Register(l log.Logger, addr string, httpPort, grpcPort int, serviceName string) (httpRegister, grpcRegister *api.AgentServiceRegistration, consulClient consul.Client) {
 	consulConfig := api.DefaultConfig()
 	if len(addr) > 0 {
 		consulConfig.Address = addr
@@ -23,23 +23,35 @@ func Register(l log.Logger, addr string, port int, serviceName string) (*api.Age
 		os.Exit(1)
 	}
 
+	// KV
+	kv(l, consulApi, addr, serviceName)
+
 	// 服务注册
-	consulClient := consul.NewClient(consulApi)
-	registration := registration(port, serviceName)
-	if err := consulClient.Register(registration); err != nil {
-		_ = level.Error(l).Log("msg", err)
-		os.Exit(1)
+	consulClient = consul.NewClient(consulApi)
+	if httpPort > 0 {
+		// http register
+		httpRegister = registration(httpPort, serviceName)
+		if err := consulClient.Register(httpRegister); err != nil {
+			_ = level.Error(l).Log("msg", err)
+			os.Exit(1)
+		}
+	}
+	if grpcPort > 0 {
+		// grpc register
+		grpcRegister = registration(grpcPort, serviceName+"-grpc")
+		if err := consulClient.Register(grpcRegister); err != nil {
+			_ = level.Error(l).Log("msg", err)
+			os.Exit(1)
+		}
 	}
 	//defer func() {
 	//	// NOTE:服务注销
-	//	if err := consulClient.Deregister(registration); err != nil {
+	//	if err := consulClient.Deregister(httpRegister); err != nil {
 	//		_ = level.Error(l).Log("msg", err)
 	//	}
 	//}()
 
-	// KV
-	kv(l, consulApi, addr, serviceName)
-	return registration, consulClient
+	return httpRegister, grpcRegister, consulClient
 }
 
 func registration(port int, serverName string) *api.AgentServiceRegistration {
